@@ -78,6 +78,7 @@ public:
   // Interface to Expr
   virtual void        replaceChild(Expr* oldAst, Expr* newAst);
   virtual Expr*       getFirstExpr();
+  virtual Expr*       getFirstChild();
   virtual Expr*       getNextExpr(Expr* expr);
 
   // New interface
@@ -100,7 +101,9 @@ public:
 
   void                insertAtHead(Expr* ast);
   void                insertAtTail(Expr* ast);
-  void                insertAtTailBeforeGoto(Expr* ast);
+  void                insertAtTailBeforeFlow(Expr* ast);
+  virtual void        insertAtExit(Expr* expr);
+  void                insertAtAllExits(Expr* expr);
 
   void                insertAtHead(const char* format, ...);
   void                insertAtTail(const char* format, ...);
@@ -151,6 +154,7 @@ public:
   virtual void        accept(AstVisitor* visitor);
 
   virtual Expr*       getFirstExpr();
+  virtual Expr*       getFirstChild();
   virtual Expr*       getNextExpr(Expr* expr);
 
   Expr*               foldConstantCondition();
@@ -194,6 +198,7 @@ class GotoStmt : public Stmt {
   virtual void        accept(AstVisitor* visitor);
 
   virtual Expr*       getFirstExpr();
+  virtual Expr*       getFirstChild();
 
   const char*         getName();
 };
@@ -218,6 +223,7 @@ public:
   virtual void        replaceChild(Expr* oldAst, Expr* newAst);
 
   virtual Expr*       getFirstExpr();
+  virtual Expr*       getFirstChild();
 
   // Local interface
   const char*         c_code;

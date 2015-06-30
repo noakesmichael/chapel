@@ -497,6 +497,22 @@ module DefaultAssociative {
     }
   }
   
+  pragma "auto copy fn"
+  proc chpl__autoCopy(x: DefaultAssociativeDom) {
+    if ! noRefCount then
+      x.incRefCount();
+    return x;
+  }
+  
+  // TODO: See if the autoDestroy can be pushed up into a base class.
+  proc chpl__autoDestroy(x: DefaultAssociativeDom) {
+    if !noRefCount {
+      var cnt = x.destroyDom();
+      if cnt == 0 then
+        delete x;
+    }
+  }
+
   class DefaultAssociativeArr: BaseArr {
     type eltType;
     type idxType;
@@ -514,6 +530,17 @@ module DefaultAssociative {
   
     proc dsiGetBaseDom() return dom;
   
+    proc ~DefaultAssociativeArr() {
+      on dom {
+        local dom.remove_arr(this);
+        if ! noRefCount {
+          var cnt = dom.destroyDom();
+          if cnt == 0 then
+            delete dom;
+        }
+      }
+    }
+
     proc clearEntry(idx: idxType, haveLock = false) {
       const initval: eltType;
       dsiAccess(idx, haveLock) = initval;
@@ -663,8 +690,22 @@ module DefaultAssociative {
       return _newDomain(dom);
     }
   }
-  
-  
+
+  pragma "auto copy fn"
+  proc chpl__autoCopy(x: DefaultAssociativeArr) {
+    if !noRefCount then
+      x.incRefCount();
+    return x;
+  }
+
+  proc chpl__autoDestroy(x: DefaultAssociativeArr) {
+    if !noRefCount {
+      var cnt = x.destroyArr();
+      if cnt == 0 then
+        delete x;
+    }
+  }
+
   proc chpl__defaultHashWrapper(x): chpl_table_index_type {
     const hash = chpl__defaultHash(x); 
     return (hash & max(chpl_table_index_type)): chpl_table_index_type;
@@ -716,18 +757,24 @@ module DefaultAssociative {
     return _gen_key(u:int(64));
   }
   
+  // TODO: maybe move this into Strings.chpl
   // Use djb2 (Dan Bernstein in comp.lang.c)
   inline proc chpl__defaultHash(x : string): int(64) {
-    return chpl__defaultHash(x.c_str());
-  }
-
-  inline proc chpl__defaultHash(x : c_string): int(64) {
     var hash: int(64) = 0;
-    for c in 1..(x.length) {
-      hash = ((hash << 5) + hash) ^ ascii(x.substring(c));
+    for c in 0..#(x.length) {
+      hash = ((hash << 5) + hash) ^ x.buff[c];
     }
     return _gen_key(hash);
   }
+
+  // TODO strings: can remove defaultHash(c_string)?
+  //inline proc chpl__defaultHash(x : c_string): int(64) {
+  //  var hash: int(64) = 0;
+  //  for c in 1..(x.length) {
+  //    hash = ((hash << 5) + hash) ^ ascii(x.substring(c));
+  //  }
+  //  return _gen_key(hash);
+  //}
   
   inline proc chpl__defaultHash(l : []) {
       var hash : int(64) = 0;

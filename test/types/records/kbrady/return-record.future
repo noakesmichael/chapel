@@ -1,5 +1,14 @@
 bug: records being returned from functions are not handled properly
 
+--------------------------------------------------------------------------------
+
+The first case is now handled correctly.
+
+The second case still fails, because the way in which return type inference and checking
+is arranged in normalize.cpp needs to be revised as a separate effort.
+
+--------------------------------------------------------------------------------
+
 There are two bugs here, depending on if the return type from the function is
 inferred or not. Both cases should eventually do the same thing.
 

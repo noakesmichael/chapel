@@ -148,7 +148,15 @@ module ChapelBase {
   config param CHPL_CACHE_REMOTE: bool = false;
 
   config param noRefCount = false;
-  
+  /* Control refCount debugging:
+   * 0 = off
+   * 1 = errors only
+   * 2 = verbose
+   */
+  config param debugArrRefCount = 0;
+  config param debugDomRefCount = 0;
+  config param debugDistRefCount = 0;
+
   config param warnMaximalRange = false;    // Warns if integer rollover will cause
                     // the iterator to yield zero times.
 
@@ -906,7 +914,7 @@ module ChapelBase {
 
   inline proc _cast(type t, x) where t:object && x:t
     return __primitive("cast", t, x);
-  
+
   inline proc _cast(type t, x) where t:object && x:_nilType
     return __primitive("cast", t, x);
   
@@ -1000,7 +1008,7 @@ module ChapelBase {
     pragma "no auto destroy" var x: t;
     return x;
   }
-  
+
   pragma "init copy fn"
   inline proc chpl__initCopy(type t) {
     compilerError("illegal assignment of type to value");
@@ -1020,7 +1028,9 @@ module ChapelBase {
   pragma "removable auto copy"
   pragma "donor fn"
   pragma "auto copy fn" proc chpl__autoCopy(x: _distribution) {
-    if !noRefCount then x._value.incRefCount();
+    if !noRefCount then
+      if x._value != nil then
+        x._value.incRefCount();
     return x;
   }
   
@@ -1028,7 +1038,9 @@ module ChapelBase {
   pragma "removable auto copy"
   pragma "donor fn"
   pragma "auto copy fn"  proc chpl__autoCopy(x: domain) {
-    if !noRefCount then x._value.incRefCount();
+    if !noRefCount then
+      if x._value != nil then
+        x._value.incRefCount();
     return x;
   }
   
@@ -1036,7 +1048,9 @@ module ChapelBase {
   pragma "removable auto copy"
   pragma "donor fn"
   pragma "auto copy fn" proc chpl__autoCopy(x: []) {
-    if !noRefCount then x._value.incRefCount();
+    if !noRefCount then
+      if x._value != nil then
+        x._value.incRefCount();
     return x;
   }
   
@@ -1063,7 +1077,12 @@ module ChapelBase {
   inline proc chpl__maybeAutoDestroyed(x: object) param return false;
   inline proc chpl__maybeAutoDestroyed(x) param return true;
 
-  pragma "auto destroy fn" inline proc chpl__autoDestroy(x: object) { }
+  // The "compiler generated" pragma gives this lower precedence than any
+  // user-defined class destructor.
+  pragma "compiler generated" 
+  pragma "auto destroy fn"
+  inline proc chpl__autoDestroy(x: object) { }
+
   pragma "auto destroy fn" inline proc chpl__autoDestroy(type t)  { }
   pragma "auto destroy fn"
   inline proc chpl__autoDestroy(x: ?t) {

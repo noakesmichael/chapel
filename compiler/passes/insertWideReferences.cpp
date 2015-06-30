@@ -42,7 +42,6 @@ static void insertStringLiteralTemps();
 static void narrowWideClassesThroughCalls();
 static void insertWideClassTempsForNil();
 static void insertWideCastTemps();
-static void derefWideStringActuals();
 static void derefWideRefsToWideClasses();
 static void widenGetPrivClass();
 
@@ -57,17 +56,6 @@ buildWideClass(Type* type) {
   theProgram->block->insertAtTail(new DefExpr(wts));
   wide->fields.insertAtTail(new DefExpr(new VarSymbol("locale", dtLocaleID)));
   wide->fields.insertAtTail(new DefExpr(new VarSymbol("addr", type)));
-
-  //
-  // Strings need an extra field in their wide class to hold their length
-  //
-  if (type == dtString) {
-    wide->fields.insertAtTail(new DefExpr(new VarSymbol("size", dtInt[INT_SIZE_DEFAULT])));
-    if (wideStringType) {
-      INT_FATAL("Created two wide string types");
-    }
-    wideStringType = wide;
-  }
 
   //
   // set reference type of wide class to reference type of class since
@@ -124,14 +112,9 @@ static void localizeCall(CallExpr* call) {
           if (rhs->get(1)->typeInfo()->symbol->hasFlag(FLAG_WIDE_REF) ||
               rhs->get(1)->typeInfo()->symbol->hasFlag(FLAG_WIDE_CLASS)) {
             insertLocalTemp(rhs->get(1));
-            if (!rhs->get(1)->typeInfo()->symbol->hasFlag(FLAG_REF)) {
-              INT_ASSERT(rhs->get(1)->typeInfo() == dtString);
-              // special handling for wide strings
-              rhs->replace(rhs->get(1)->remove());
-            }
           }
           break;
-        } 
+        }
         else if (rhs->isPrimitive(PRIM_GET_MEMBER) ||
                    rhs->isPrimitive(PRIM_GET_SVEC_MEMBER) ||
                    rhs->isPrimitive(PRIM_GET_MEMBER_VALUE) ||
@@ -393,7 +376,6 @@ insertWideReferences(void) {
   narrowWideClassesThroughCalls();
   insertWideClassTempsForNil();
   insertWideCastTemps();
-  derefWideStringActuals();
   derefWideRefsToWideClasses();
   widenGetPrivClass();
   heapAllocateGlobalsTail(heapAllocateGlobals, heapVars);
@@ -452,7 +434,6 @@ static void buildWideClasses()
       buildWideClass(ct);
     }
   }
-  buildWideClass(dtString);
 }
 
 
@@ -467,7 +448,7 @@ static void widenClasses()
     // do not widen literals
     //
     if (VarSymbol* var = toVarSymbol(def->sym))
-      if ((var->immediate) || (var == dtString->defaultValue))
+      if (var->immediate)
         continue;
 
     //
@@ -635,9 +616,9 @@ static void insertStringLiteralTemps()
   // be widened.
   //
   forv_Vec(SymExpr, se, gSymExprs) {
-    if ((se->var->type == dtStringC) || (se->var->type == dtString)) {
+    if (se->var->type == dtStringC) {
       if (VarSymbol* var = toVarSymbol(se->var)) {
-        if (var->immediate || (var == dtString->defaultValue)) {
+        if (var->immediate) {
           if (CallExpr* call = toCallExpr(se->parentExpr)) {
             SET_LINENO(se);
             if (call->isResolved())
@@ -731,9 +712,8 @@ static void narrowWideClassesThroughCalls()
           call->getStmtExpr()->insertBefore(new DefExpr(var));
 
           
-          if ((symType->symbol->hasFlag(FLAG_WIDE_CLASS) &&
-               narrowType->symbol->hasFlag(FLAG_EXTERN)) ||
-              isRefWideString(narrowType)) {
+          if (symType->symbol->hasFlag(FLAG_WIDE_CLASS) &&
+              narrowType->symbol->hasFlag(FLAG_EXTERN)) {
 
             // Insert a local check because we cannot reflect any changes
             // made to the class back to another locale
@@ -843,32 +823,6 @@ static void insertWideCastTemps()
             move->insertBefore(new DefExpr(tmp));
             call->replace(new SymExpr(tmp));
             move->insertBefore(new CallExpr(PRIM_MOVE, tmp, call));
-          }
-        }
-      }
-    }
-  }
-}
-
-
-static void derefWideStringActuals()
-{
-  //
-  // dereference wide string actual argument to primitive
-  //
-  forv_Vec(CallExpr, call, gCallExprs) {
-    if (call->parentSymbol && call->primitive) {
-      if (call->primitive->tag == PRIM_UNKNOWN ||
-          call->isPrimitive(PRIM_CAST)) {
-        for_actuals(actual, call) {
-          if (actual->typeInfo()->symbol->hasFlag(FLAG_WIDE_CLASS)) {
-            if (actual->typeInfo()->getField("addr")->typeInfo() == dtString) {
-              SET_LINENO(call);
-              VarSymbol* tmp = newTemp(actual->typeInfo()->getField("addr")->typeInfo());
-              call->getStmtExpr()->insertBefore(new DefExpr(tmp));
-              call->getStmtExpr()->insertBefore(new CallExpr(PRIM_MOVE, tmp, new CallExpr(PRIM_DEREF, actual->copy())));
-              actual->replace(new SymExpr(tmp));
-            }
           }
         }
       }

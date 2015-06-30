@@ -50,6 +50,7 @@ void expandExternArrayCalls();
 void flattenClasses();
 void flattenFunctions();
 void inlineFunctions();
+void insertAutoCopyAutoDestroy();
 void insertLineNumbers();
 void insertWideReferences();
 void narrowWideReferences();
@@ -108,11 +109,10 @@ void deadBlockElimination();
 void flattenNestedFunctions(Vec<FnSymbol*>& nestedFunctions);
 
 // callDestructors.cpp
+void insertReferenceTemps();
 void insertReferenceTemps(CallExpr* call);
 
 // parallel.cpp
-bool isRefWideString(Type* t);
-bool isWideString(Type* t);
 Type* getOrMakeRefTypeDuringCodegen(Type* type);
 Type* getOrMakeWideTypeDuringCodegen(Type* refType);
 

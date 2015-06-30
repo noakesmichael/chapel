@@ -493,6 +493,21 @@ proc Block.dsiCreateReindexDist(newSpace, oldSpace) {
   return newDist;
 }
 
+pragma "auto copy fn"
+proc chpl__autoCopy(x: Block) {
+  if ! noRefCount then
+    x.incRefCount();
+  return x;
+}
+
+proc chpl__autoDestroy(x: Block) {
+  if !noRefCount {
+    var cnt = x.destroyDist();
+    if cnt == 0 then
+      delete x;
+  }
+}
+
 
 proc LocBlock.LocBlock(param rank: int,
                       type idxType, 
@@ -592,6 +607,21 @@ proc Block.dsiCreateRankChangeDist(param newRank: int, args) {
   return new Block(newBbox, newTargetLocales,
                    dataParTasksPerLocale, dataParIgnoreRunningTasks,
                    dataParMinGranularity);
+}
+
+pragma "auto copy fn"
+proc chpl__autoCopy(x: BlockDom) {
+  if ! noRefCount then
+    x.incRefCount();
+  return x;
+}
+
+proc chpl__autoDestroy(x: BlockDom) {
+  if !noRefCount {
+    var cnt = x.destroyDom();
+    if cnt == 0 then
+      delete x;
+  }
 }
 
 iter BlockDom.these() {
@@ -749,6 +779,18 @@ proc BlockDom.setup() {
   }
 }
 
+proc BlockDom.~BlockDom() {
+  coforall localeIdx in dist.targetLocDom do {
+    on locDoms(localeIdx) do
+      delete locDoms(localeIdx);
+  }
+  if ! noRefCount {
+    var cnt = dist.decRefCount();
+    if cnt==0 then
+      delete dist;
+  }
+}
+
 proc BlockDom.dsiMember(i) {
   return whole.member(i);
 }
@@ -780,6 +822,21 @@ proc BlockDom.dsiBuildRectangularDom(param rank: int, type idxType,
 // Added as a performance stopgap to avoid returning a domain
 //
 proc LocBlockDom.member(i) return myBlock.member(i);
+
+pragma "auto copy fn"
+proc chpl__autoCopy(x: BlockArr) {
+  if !noRefCount then
+    x.incRefCount();
+  return x;
+}
+
+proc chpl__autoDestroy(x: BlockArr) {
+  if !noRefCount {
+    var cnt = x.destroyArr();
+    if cnt == 0 then
+      delete x;
+  }
+}
 
 proc BlockArr.dsiDisplayRepresentation() {
   for tli in dom.dist.targetLocDom {
@@ -827,6 +884,25 @@ proc BlockArr.setup() {
   }
 
   if doRADOpt && disableBlockLazyRAD then setupRADOpt();
+}
+
+proc BlockArr.~BlockArr() {
+  // Delete the locArr elements.
+  coforall localeIdx in dom.dist.targetLocDom {
+    on locArr(localeIdx) {
+      delete locArr(localeIdx);
+    }
+  }
+
+  // Release my reference to the distributed domain.
+  on dom {
+    local dom.remove_arr(this);
+    if ! noRefCount {
+      var cnt = dom.destroyDom();
+      if cnt == 0 then
+        delete dom;
+    }
+  }
 }
 
 inline proc _remoteAccessData.getDataIndex(param stridable, ind: rank*idxType) {
@@ -1572,8 +1648,10 @@ proc BlockArr.doiBulkTransferToDR(Barg)
         slice.adjustBlkOffStrForNewDomain(d._value, slice);
         
         slice.doiBulkTransferStride(A.locArr[j].myElems[(...r2)]._value);
-        
-        delete slice;
+        // TODO: Slicing does not update dom counts correctly, so for now we disable
+        // the delete to avoid memory corruption.  We need to return here and
+        // fix this to avoid leaking these slices.
+//        delete slice;
       }
     }
 }
@@ -1616,7 +1694,9 @@ proc BlockArr.doiBulkTransferFromDR(Barg)
         slice.adjustBlkOffStrForNewDomain(d._value, slice);
         
         A.locArr[j].myElems[(...r2)]._value.doiBulkTransferStride(slice);
-        delete slice;
+// TODO: also re-enable this delete after domain reference counting in
+//        dsiSlice is corrected.
+//        delete slice;
       }
     }
 }

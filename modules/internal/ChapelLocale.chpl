@@ -22,6 +22,7 @@
 module ChapelLocale {
 
   use LocaleModel;
+  use AutoPtr;
 
   //
   // Node and sublocale types and special sublocale values.
@@ -56,7 +57,7 @@ module ChapelLocale {
 
     proc id : int return chpl_id();  // just the node part
     proc localeid : chpl_localeID_t return chpl_localeid(); // full locale id
-    proc name return chpl_name();
+    proc name return chpl_name() : c_string;
 
     // This many tasks are running on this locale.
     //
@@ -108,7 +109,7 @@ module ChapelLocale {
       return chpl_buildLocaleID(-1:chpl_nodeID_t, c_sublocid_none);
     }
 
-    proc chpl_name() : string {
+    proc chpl_name() : c_string {
       _throwPVFCError();
       return "";
     }
@@ -180,6 +181,7 @@ module ChapelLocale {
   // module.
   //
   var origRootLocale : locale = nil;
+  var origRootLocaleWrapper = new auto_ptr(origRootLocale);
 
   class AbstractRootLocale : locale {
     // These functions are used to establish values for Locales[] and
@@ -304,6 +306,7 @@ module ChapelLocale {
   proc chpl_init_rootLocale() {
     origRootLocale = new RootLocale();
     (origRootLocale:RootLocale).init();
+    origRootLocaleWrapper.ptr = origRootLocale;
   }
 
   // This function sets up a private copy of rootLocale by replicating

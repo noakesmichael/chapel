@@ -50,7 +50,7 @@ proc realPath(out error: syserr, name: string): string {
 
   var res: c_string_copy;
   error = chpl_fs_realpath(name.c_str(), res);
-  return toString(res);
+  return res:string;
 }
 
 /* Given a path `name`, attempts to determine the canonical path referenced.
@@ -66,7 +66,8 @@ proc realPath(out error: syserr, name: string): string {
    :return: A canonical version of the argument.
    :rtype: string
 */
-proc realPath(name: string): string {
+proc realPath(name: string) // : string
+{
   var err: syserr = ENOERR;
   var ret = realPath(err, name);
   if err != ENOERR then ioerror(err, "in realPath of", name);
@@ -74,7 +75,8 @@ proc realPath(name: string): string {
 }
 
 pragma "no doc"
-proc file.realPath(out error: syserr): string {
+proc file.realPath(out error: syserr)//: string
+{
   extern proc chpl_fs_realpath_file(path: qio_file_ptr_t, ref shortened: c_string_copy): syserr;
 
   var res: c_string_copy;
@@ -86,7 +88,8 @@ proc file.realPath(out error: syserr): string {
     return "";
   }
   error = chpl_fs_realpath_file(_file_internal, res);
-  return toString(res);
+  var len = res.length;
+  return new string(res:c_ptr(uint(8)), len, len, owned=true, needToCopy=false);
 }
 
 /* Determines the canonical path referenced by the :type:`~IO.file` record
@@ -101,7 +104,8 @@ proc file.realPath(out error: syserr): string {
             occur
    :rtype: string
 */
-proc file.realPath(): string {
+proc file.realPath()// : string 
+{
   var err: syserr = ENOERR;
   var ret = realPath(err);
   if err != ENOERR then ioerror(err, "in file.realPath");

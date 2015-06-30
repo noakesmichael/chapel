@@ -74,6 +74,21 @@ module DefaultRectangular {
     if defaultDist._value==nil then defaultDist = new dmap(new DefaultDist());
   }
   
+pragma "auto copy fn"
+proc chpl__autoCopy(x: DefaultDist) {
+  if ! noRefCount then
+    x.incRefCount();
+  return x;
+}
+
+proc chpl__autoDestroy(x: DefaultDist) {
+  if !noRefCount {
+    var cnt = x.destroyDist();
+    if cnt == 0 then
+      delete x;
+  }
+}
+
   class DefaultRectangularDom: BaseRectangularDom {
     param rank : int;
     type idxType;
@@ -87,7 +102,7 @@ module DefaultRectangular {
     proc DefaultRectangularDom(param rank, type idxType, param stridable, dist) {
       this.dist = dist;
     }
-  
+
     proc dsiDisplayRepresentation() {
       writeln("ranges = ", ranges);
     }
@@ -583,7 +598,26 @@ module DefaultRectangular {
       halt("all dsiLocalSlice calls on DefaultRectangulars should be handled in ChapelArray.chpl");
     }
   }
-  
+
+  // This should look a lot like a "peeled" version of its domain counterpart in
+  // ChapelBase.chpl.
+  pragma "auto copy fn"
+  proc chpl__autoCopy(x: DefaultRectangularDom) {
+    if !noRefCount then
+      x.incRefCount();
+    return x;
+  }
+
+  // This should look a lot like a "stripped" vesion of the destructor for
+  // record _domain in ChapelArray.chpl
+  proc chpl__autoDestroy(x: DefaultRectangularDom) {
+    if !noRefCount {
+      var cnt = x.destroyDom();
+      if cnt == 0 then
+        delete x;
+    }
+  }
+
   record _remoteAccessData {
     type eltType;
     param rank : int;
@@ -635,6 +669,17 @@ module DefaultRectangular {
     //var numelm: int = -1; // for correctness checking
   
     // end class definition here, then defined secondary methods below
+
+    proc ~DefaultRectangularArr() {
+      on dom {
+        local dom.remove_arr(this);
+        if ! noRefCount {
+          var cnt = dom.destroyDom();
+          if cnt == 0 then
+            delete dom;
+        }
+      }
+    }
   
     proc dsiDisplayRepresentation() {
       writeln("off=", off);
@@ -771,7 +816,7 @@ module DefaultRectangular {
 
     inline proc initShiftedData() {
       if earlyShiftData && !stridable {
-        if dom.dsiNumIndices > 0 {
+//        if dom.dsiNumIndices > 0 { // This is not an optimization
           if isIntType(idxType) then
             shiftedData = _ddata_shift(eltType, data, origin-factoredOffs);
           else
@@ -779,7 +824,7 @@ module DefaultRectangular {
             shiftedData = _ddata_shift(eltType, data,
                                        origin:chpl__signedType(idxType)-
                                        factoredOffs:chpl__signedType(idxType));
-        }
+//        }
       }
     }
 
@@ -993,10 +1038,12 @@ module DefaultRectangular {
         // has not yet been updated (this is called from within the
         // = function for domains.
         if earlyShiftData && !d._value.stridable then
-          if d.numIndices > 0 then
+//          if d.numIndices > 0 then
             shiftedData = copy.shiftedData;
         //numelm = copy.numelm;
-        delete copy;
+// This breaks some routines.  We will leak the copies for now, and
+// then fix this by turning down the screws on leaks in general.
+//        delete copy;
         }
       } else {
         halt("illegal reallocation");
@@ -1016,7 +1063,8 @@ module DefaultRectangular {
       rad.factoredOffs = factoredOffs;
       rad.data = data;
       if earlyShiftData && !stridable then
-        if dom.dsiNumIndices > 0 then rad.shiftedData = shiftedData;
+//        if dom.dsiNumIndices > 0 then
+          rad.shiftedData = shiftedData;
       return rad;
     }
 
@@ -1719,6 +1767,21 @@ module DefaultRectangular {
     return false;
   }
   
+  pragma "auto copy fn"
+  proc chpl__autoCopy(x: DefaultRectangularArr) {
+    if !noRefCount then
+      x.incRefCount();
+    return x;
+  }
+  
+  proc chpl__autoDestroy(x: DefaultRectangularArr) {
+    if !noRefCount {
+      var cnt = x.destroyArr();
+      if cnt == 0 then
+        delete x;
+    }
+  }
+
   //
   // Check whether the first 'tam' elements in arrays 'd1' and 'd2' are equal.
   // This is better than 'd1==d2' because it does not result in a forall.

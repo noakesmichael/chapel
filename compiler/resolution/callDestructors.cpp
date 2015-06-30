@@ -17,6 +17,8 @@
  * limitations under the License.
  */
 
+#define HILDE_MM 1
+
 #include "passes.h"
 
 #include "astutil.h"
@@ -27,7 +29,9 @@
 #include "stmt.h"
 #include "symbol.h"
 
+#include <set>
 
+#ifndef HILDE_MM
 // Clear autoDestroy flags on variables that get assigned to the return value of
 // certain functions.
 //
@@ -55,6 +59,7 @@ static void cullAutoDestroyFlags()
       if (ts->hasFlag(FLAG_ARRAY) ||
           ts->hasFlag(FLAG_DOMAIN))
         ret->removeFlag(FLAG_INSERT_AUTO_DESTROY);
+      }
       // Do we need to add other record-wrapped types here?  Testing will tell.
 
       // NOTE 1: When the value of a record field is established in a default
@@ -498,7 +503,7 @@ static void replaceRemainingUses(Vec<SymExpr*>& use, SymExpr* firstUse,
         }
       }
     }
-  }            
+  }
 }
 
 
@@ -661,12 +666,15 @@ returnRecordsByReferenceArguments() {
   }
   freeDefUseMaps(defMap, useMap);
 }
-
+#endif
 
 static void
 fixupDestructors() {
   forv_Vec(FnSymbol, fn, gFnSymbols) {
-    if (fn->hasFlag(FLAG_DESTRUCTOR)) {
+    if (fn->hasFlag(FLAG_DESTRUCTOR) &&
+        // TODO: Right now, we flesh out the body of a freeIterator function
+        // "by hand".  But if we can reuse this code, that would be much better.
+        !fn->hasFlag(FLAG_AUTO_II)) {
       AggregateType* ct = toAggregateType(fn->_this->getValType());
       INT_ASSERT(ct);
 
@@ -697,13 +705,6 @@ fixupDestructors() {
                 new CallExpr(PRIM_MOVE, tmp,
                   new CallExpr(PRIM_GET_MEMBER_VALUE, fn->_this, field)));
           fn->insertBeforeReturnAfterLabel(new CallExpr(autoDestroyFn, tmp));
-        } else if (field->type == dtString && !ct->symbol->hasFlag(FLAG_TUPLE)) {
-// Temporary expedient: Leak strings like crazy.
-//          VarSymbol* tmp = newTemp("_field_destructor_tmp_", dtString);
-//          fn->insertBeforeReturnAfterLabel(new DefExpr(tmp));
-//          fn->insertBeforeReturnAfterLabel(new CallExpr(PRIM_MOVE, tmp,
-//            new CallExpr(PRIM_GET_MEMBER_VALUE, fn->_this, field)));
-//          fn->insertBeforeReturnAfterLabel(callChplHereFree(tmp));
         }
       }
 
@@ -729,29 +730,67 @@ fixupDestructors() {
 }
 
 
+static void addAutoDestroyCallsForModule(ModuleSymbol* mod, FnSymbol* fn,
+                                         std::set<ModuleSymbol*>& visited)
+{
+// Termination
+  if (visited.count(mod) > 0)
+    return;
+  visited.insert(mod);
+
+// Recursion
+  // Visit my parent.
+  if (ModuleSymbol* parent = mod->defPoint->getModule())
+    if (parent != theProgram && parent != rootModule)
+      addAutoDestroyCallsForModule(parent, fn, visited);
+
+  // Visit my explicit dependencies.
+  forv_Vec(ModuleSymbol, usedMod, mod->modUseList)
+    addAutoDestroyCallsForModule(usedMod, fn, visited);
+
+// Real work
+  for_alist(expr, mod->block->body)
+  {
+    if (DefExpr* def = toDefExpr(expr))
+      if (VarSymbol* var = toVarSymbol(def->sym))
+      {
+        if (var->hasFlag(FLAG_NO_AUTO_DESTROY))
+          continue;
+
+        if (FnSymbol* autoDestroy = autoDestroyMap.get(var->type))
+        {
+          // Skip destructors for class types (only nude RWT types at this point).
+          if (AggregateType* at = toAggregateType(var->type))
+            if (isClass(at))
+              continue;
+
+          SET_LINENO(var);
+          fn->insertAtHead(new CallExpr(autoDestroy, var));
+        }
+      }
+  }
+}
+
+
 static void insertGlobalAutoDestroyCalls() {
   // --ipe does not build chpl_gen_main
   if (chpl_gen_main == NULL)
     return;
 
-  const char* name = "chpl__autoDestroyGlobals";
   SET_LINENO(baseModule);
+
+  const char* name = "chpl__autoDestroyGlobals";
   FnSymbol* fn = new FnSymbol(name);
+
+  // TODO: Would like to use unordered_set (C++11) instead, when it is available.
+  std::set<ModuleSymbol*> visited;
+  addAutoDestroyCallsForModule(mainModule, fn, visited);
+
+  fn->insertAtTail(new CallExpr(PRIM_RETURN, gVoid));
   fn->retType = dtVoid;
+
   chpl_gen_main->defPoint->insertBefore(new DefExpr(fn));
   chpl_gen_main->insertBeforeReturnAfterLabel(new CallExpr(fn));
-  forv_Vec(DefExpr, def, gDefExprs) {
-    if (isModuleSymbol(def->parentSymbol))
-      if (def->parentSymbol != rootModule)
-        if (VarSymbol* var = toVarSymbol(def->sym))
-          if (!var->isParameter() && !var->isType())
-            if (!var->hasFlag(FLAG_NO_AUTO_DESTROY))
-              if (FnSymbol* autoDestroy = autoDestroyMap.get(var->type)) {
-                SET_LINENO(var);
-                fn->insertAtTail(new CallExpr(autoDestroy, var));
-              }
-  }
-  fn->insertAtTail(new CallExpr(PRIM_RETURN, gVoid));
 }
 
 
@@ -770,7 +809,7 @@ static void insertDestructorCalls()
   }
 }
 
-
+#ifndef HILDE_MM
 static void insertAutoCopyTemps()
 {
   Map<Symbol*,Vec<SymExpr*>*> defMap;
@@ -816,7 +855,7 @@ static void insertAutoCopyTemps()
 
   freeDefUseMaps(defMap, useMap);
 }
-
+#endif
 
 // This routine inserts autoCopy calls ahead of yield statements as necessary,
 // so the calling routine "owns" the returned value.
@@ -884,7 +923,7 @@ void insertReferenceTemps(CallExpr* call)
 }
 
 
-static void insertReferenceTemps() {
+void insertReferenceTemps() {
   forv_Vec(CallExpr, call, gCallExprs) {
     if ((call->parentSymbol && call->isResolved()) ||
         call->isPrimitive(PRIM_VIRTUAL_METHOD_CALL)) {
@@ -898,11 +937,13 @@ void
 callDestructors() {
   fixupDestructors();
   insertDestructorCalls();
+#ifndef HILDE_MM
   insertAutoCopyTemps();
   cullAutoDestroyFlags();
   cullExplicitAutoDestroyFlags();
   insertAutoDestroyCalls();
   returnRecordsByReferenceArguments();
+#endif
   insertYieldTemps();
   insertGlobalAutoDestroyCalls();
   insertReferenceTemps();

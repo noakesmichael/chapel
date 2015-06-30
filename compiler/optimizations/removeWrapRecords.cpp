@@ -37,15 +37,15 @@ static Type* getWrapRecordBaseType(Type* type);
 //
 void
 removeWrapRecords() {
+
   //
   // do not remove wrap records if dead code elimination is disabled
-  // (or weakened because inlining or copy propagation is disabled)
   // because code associated with accesses to the removed
   // _valueType field will remain
   //
-  if (fNoDeadCodeElimination || fNoInline || fNoCopyPropagation)
+  if (fNoRemoveWrapRecords)
     return;
-
+ 
   //
   // replace use of _valueType field with type
   //

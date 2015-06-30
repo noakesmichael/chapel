@@ -196,6 +196,7 @@ void c_string_from_wide_string(c_string* ret, chpl____wide_chpl_string* str, int
  */
 // Even if allocation is done here, the returned string is already owned
 // elsewhere.  So we return a c_string, not a c_string_copy.
+/*
 c_string_copy stringMove(c_string_copy dest, c_string src, int64_t len,
                          int32_t lineno, c_string filename) {
   char *ret;
@@ -219,6 +220,7 @@ c_string_copy stringMove(c_string_copy dest, c_string src, int64_t len,
   snprintf(ret, len+1, "%s", src);
   return (c_string) ret;
 }
+*/
 
 /* This function returns a string from src_locale located at src_addr.
  *
@@ -227,6 +229,7 @@ c_string_copy stringMove(c_string_copy dest, c_string src, int64_t len,
  *     src_len: length
  *
  */
+/*
 c_string_copy remoteStringCopy(c_nodeid_t src_locale,
                                c_string src_addr, int64_t src_len,
                                int32_t lineno, c_string filename) {
@@ -238,3 +241,4 @@ c_string_copy remoteStringCopy(c_nodeid_t src_locale,
                     CHPL_TYPE_uint8_t, src_len+1, lineno, filename);
   return (c_string)ret;
 }
+*/

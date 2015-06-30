@@ -406,8 +406,8 @@ extern proc qio_regexp_replace(ref re:qio_regexp_t, repl:c_string, repllen:int(6
 // (or any way to use 'nil' in pass-by-ref)
 // This one is documented below.
 pragma "no doc"
-proc compile(pattern: string, utf8=true, posix=false, literal=false, nocapture=false, /*i*/ ignorecase=false, /*m*/ multiline=false, /*s*/ dotnl=false, /*U*/ nongreedy=false):regexp {
-
+proc compile(pattern: string, utf8=true, posix=false, literal=false, nocapture=false, /*i*/ ignorecase=false, /*m*/ multiline=false, /*s*/ dotnl=false, /*U*/ nongreedy=false)//:regexp
+{
   if CHPL_REGEXP == "none" {
     compilerError("Regular expression support not compiled in");
   }
@@ -427,7 +427,8 @@ proc compile(pattern: string, utf8=true, posix=false, literal=false, nocapture=f
   qio_regexp_create_compile(pattern.c_str(), pattern.length, opts, ret._regexp);
   if ! qio_regexp_ok(ret._regexp) {
     var err_str = qio_regexp_error(ret._regexp);
-    __primitive("chpl_error", "Error " + err_str + " when compiling regexp '" + pattern + "'");
+    var err_msg = "Error " + err_str + " when compiling regexp '" + pattern + "'";
+    __primitive("chpl_error", err_msg.c_str());
   }
   return ret;
 }
@@ -474,7 +475,8 @@ proc compile(pattern: string, utf8=true, posix=false, literal=false, nocapture=f
                    ``(?U)``.
 
  */
-proc compile(pattern: string, out error:syserr, utf8=true, posix=false, literal=false, nocapture=false, /*i*/ ignorecase=false, /*m*/ multiline=false, /*s*/ dotnl=false, /*U*/ nongreedy=false):regexp {
+proc compile(pattern: string, out error:syserr, utf8=true, posix=false, literal=false, nocapture=false, /*i*/ ignorecase=false, /*m*/ multiline=false, /*s*/ dotnl=false, /*U*/ nongreedy=false)//:regexp
+{
   var opts:qio_regexp_options_t;
   qio_regexp_init_default_options(opts);
   opts.utf8 = utf8;
@@ -544,7 +546,8 @@ record reMatch {
 }
 
 pragma "no doc"
-proc _to_reMatch(ref p:qio_regexp_string_piece_t):reMatch {
+proc _to_reMatch(ref p:qio_regexp_string_piece_t)//:reMatch
+{
   if qio_regexp_string_piece_isnull(p) {
     return new reMatch(false, -1, 0); 
   } else {
@@ -566,8 +569,8 @@ inline proc _cond_test(m: reMatch) return m.matched;
     :arg m: a match (e.g. returned by :proc:`regexp.search`)
     :returns: the portion of ``this`` referred to by the match
  */
-proc string.substring(m:reMatch) {
-  if m.matched then return this.substring(m.offset+1..#m.length);
+proc string.this(m:reMatch) {
+  if m.matched then return this[m.offset+1..#m.length];
   else return "";
 }
 
@@ -595,8 +598,9 @@ record regexp {
      :returns: a string describing any error encountered when compiling this
                regular expression
    */
-  proc error():string {
-    return toString(qio_regexp_error(_regexp));
+  proc error()//:string
+  {
+    return qio_regexp_error(_regexp):string;
   }
 
   // note - more = overloads are below.
@@ -615,7 +619,7 @@ record regexp {
         captures[i] = m;
       } else {
         if m.matched {
-          captures[i] = text.substring(m):captures[i].type;
+          captures[i] = text[m]:captures[i].type;
         } else {
           var empty:captures[i].type;
           captures[i] = empty;
@@ -643,7 +647,7 @@ record regexp {
                where a match occurred
 
     */
-  proc search(text: ?t, ref captures ...?k):reMatch
+  proc search(text: ?t, ref captures ...?k)//:reMatch
     where t == string || t == stringPart
   {
     var ret:reMatch;
@@ -675,7 +679,7 @@ record regexp {
 
   // documented in the captures version
   pragma "no doc"
-  proc search(text: ?t):reMatch
+  proc search(text: ?t)//:reMatch
     where t == string || t == stringPart
   {
     var ret:reMatch;
@@ -723,7 +727,7 @@ record regexp {
      :returns: an :record:`reMatch` object representing the offset in text
                where a match occurred
    */
-  proc match(text: ?t, ref captures ...?k):reMatch
+  proc match(text: ?t, ref captures ...?k)//:reMatch
     where t == string || t == stringPart
   {
     var ret:reMatch;
@@ -755,7 +759,7 @@ record regexp {
 
   // documented in the version taking captures.
   pragma "no doc"
-  proc match(text: ?t):reMatch
+  proc match(text: ?t)//:reMatch
     where t == string || t == stringPart
   {
     var ret:reMatch;
@@ -834,9 +838,9 @@ record regexp {
         splitend = endpos;
       }
 
-      if pos < endpos {
+      if pos < splitstart {
         // Yield splitted value
-        yield text.substring(pos+1..splitstart);
+        yield text[pos+1..splitstart];
       } else {
         yield "";
       }
@@ -844,10 +848,10 @@ record regexp {
       if got {
         // Yield capture groups
         for i in 1..ncaptures {
-          yield text.substring(new reMatch(
+          yield text[new reMatch(
                 !qio_regexp_string_piece_isnull(matches[i]),
                 matches[i].offset,
-                matches[i].len));
+                matches[i].len)];
         }
       }
 
@@ -918,7 +922,7 @@ record regexp {
      :returns: a tuple containing (new string, number of substitutions made)
    */
   // TODO -- move subn after sub for documentation clarity
-  proc subn(repl:string, text: ?t, global = true ):(string, int)
+  proc subn(repl:string, text: ?t, global = true )//:(string, int)
     where t == string || t == stringPart 
   {
     var pos:int;
@@ -936,14 +940,14 @@ record regexp {
     } else {
       nreplaced = qio_regexp_replace(_regexp, repl.c_str(), repl.length, text.c_str(), text.length, pos, endpos, global, replaced, replaced_len);
     }
-    const ret = toString(replaced);
+    const ret = replaced:string;
     return (ret, nreplaced);
   }
 
   /*
      Find matches to this regular expression and create a new string in which
      those matches are replaced by repl.
-     
+
      :arg repl: replace matches with this string
      :arg text: the text to search and replace within
      :type text: string
@@ -1028,7 +1032,7 @@ inline proc _cast(type t, x: regexp) where t == string {
   on x.home {
     var cs: c_string_copy;
     qio_regexp_get_pattern(x._regexp, cs);
-    pattern = toString(cs);
+    pattern = cs:string;
   }
   return pattern;
 }
@@ -1050,7 +1054,7 @@ inline proc _cast(type t, x: string) where t == regexp {
    :returns: an :record:`reMatch` object representing the offset in the
              receiving string where a match occurred
  */
-proc string.search(needle: string, ignorecase=false):reMatch
+proc string.search(needle: string, ignorecase=false)//:reMatch
 {
   // Create a regexp matching the literal for needle
   var re = compile(needle, literal=true, nocapture=true, ignorecase=ignorecase);
@@ -1059,7 +1063,7 @@ proc string.search(needle: string, ignorecase=false):reMatch
 
 // documented in the captures version
 pragma "no doc"
-proc string.search(needle: regexp):reMatch
+proc string.search(needle: regexp)//:reMatch
 {
   return needle.search(this);
 }
@@ -1073,14 +1077,14 @@ proc string.search(needle: regexp):reMatch
    :returns: an :record:`reMatch` object representing the offset in the
              receiving string where a match occurred
  */
-proc string.search(needle: regexp, ref captures ...?k):reMatch
+proc string.search(needle: regexp, ref captures ...?k)//:reMatch
 {
   return needle.search(this, (...captures));
 }
 
 // documented in the captures version
 pragma "no doc"
-proc string.match(pattern: regexp):reMatch
+proc string.match(pattern: regexp)//:reMatch
 {
   return pattern.match(this);
 }
@@ -1096,7 +1100,7 @@ proc string.match(pattern: regexp):reMatch
              receiving string where a match occurred
  */
 
-proc string.match(pattern: regexp, ref captures ...?k):reMatch
+proc string.match(pattern: regexp, ref captures ...?k)//:reMatch
 {
   return pattern.match(this, (...captures));
 }
